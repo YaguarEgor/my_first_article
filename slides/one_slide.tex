@@ -1,0 +1,49 @@
+\documentclass[aspectratio=169,12pt]{beamer}
+\input{theme}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\hypersetup{pdftitle={KD кодбуков VQDM: одна гипотеза и результат}}
+\begin{document}
+\begin{frame}[plain]
+\par\vspace{0pt}
+{\fontsize{18}{21}\selectfont\bfseries Дистилляция кодбуков VQDM для DiT\par}
+\par\vspace{2mm}
+\textbf{Гипотеза:} подгонка под выход исходной сети снижает FID при прежней битности.
+\par\vspace{1mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{.51\textwidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+ width=73mm,height=45mm,ybar,bar width=9mm,
+ ymin=0,ymax=18,xmin=-.6,xmax=2.6,
+ xtick={0,1,2},xticklabels={FP,VQDM,VQDM+KD},
+ ytick={0,5,10,15},ylabel={FID$\downarrow$},
+ axis lines*=left,ymajorgrids,grid style={black!12},
+ tick label style={font=\fontsize{10}{12}\selectfont},
+ label style={font=\fontsize{11}{13}\selectfont},
+ nodes near coords,nodes near coords style={font=\small,text=Ink},
+ point meta=explicit symbolic,
+ every axis plot/.append style={draw=none,fill=Accent},
+ clip=false]
+\addplot[draw=none,fill=Accent!70] table[x=position,y=fid,meta=label]{../data/fid_plot.dat};
+\end{axis}
+\end{tikzpicture}
+\end{column}
+\begin{column}{.46\textwidth}
+{\small\textbf{Метод}\par
+500 Adam-обновлений кодбуков.\par
+Индексы и остальные веса фиксированы.\par
+$\mathcal L=\mathrm{MSE}(\epsilon_Q,\epsilon_T)$\par
+$\phantom{\mathcal L={}}+0{,}1\mathrm{MSE}(v_Q,v_T)$}
+\par\vspace{2mm}
+\textcolor{Accent}{\textbf{FID $-49{,}3\%$}}\par
+Обе квантованные модели:\par
+\textbf{4,15 бита/параметр}.
+\end{column}
+\end{columns}
+\par\vspace{1mm}
+{\small DiT-XL/2, ImageNet256, 10\,000 изображений, DDPM50, CFG 1,5.\par
+Результат одного фиксированного запуска. Recall: $0{,}7115\to0{,}6770$.}
+\end{frame}
+\end{document}

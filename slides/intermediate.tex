@@ -1,0 +1,75 @@
+\documentclass[aspectratio=169,12pt]{beamer}
+\input{theme}
+\hypersetup{pdftitle={Дистилляция кодбуков квантованной DiT}}
+\begin{document}
+\begin{frame}[plain]
+\par\vspace{2mm}
+{\fontsize{22}{26}\selectfont\bfseries Дистилляция кодбуков\\квантованной DiT\par}
+\par\vspace{4mm}
+Егор Подъяблонский\par
+{\small МГУ, факультет ВМК\par Научный руководитель: Айбек Аланов}
+\par\vspace{4mm}
+\textbf{Цель}\quad Улучшить генерацию при прежней битности.
+\par\vspace{2mm}
+\textcolor{Accent}{\textbf{Гипотеза}}\quad Подгонка кодбуков под выход исходной сети снижает FID после послойной квантизации.
+\end{frame}
+
+\begin{frame}{Модель и обоснование}
+\textbf{DiT-XL/2}\quad Диффузионный трансформер для ImageNet256.\par
+\textbf{VQDM}\quad Группы весов заменяются суммами элементов кодбуков:
+\[
+ \widehat w=s\sum_{m=1}^{4}C_m[a_m],\qquad K=256,\quad d=8.
+\]
+Индексы: номинально 4 бита на квантованный вес.\par
+Вся DiT с кодбуками и остальными параметрами: \textbf{\WholeBpp{} бита/параметр}.
+\par\vspace{1mm}
+{\small DiT: Peebles, Xie, 2023. VQDM: Egiazarian et al., 2024.\par
+VQDM уже использует глобальную дистилляцию для U-Net. Здесь проверяется её перенос на DiT с обучением только кодбуков.}
+\end{frame}
+
+\begin{frame}{Подгонка под выход всей сети}
+Одинаковые зашумлённый латент $z_t$, время $t$ и класс $y$ подаются исходной и квантованной DiT.
+\[
+ \mathcal L_{\mathrm{KD}}=
+ \underbrace{\operatorname{MSE}(\epsilon_Q,\epsilon_T)}_{\text{предсказание шума}}
+ +0{,}1\underbrace{\operatorname{MSE}(v_Q,v_T)}_{\text{сырой variance-выход}}.
+\]
+\textbf{Обучаются:} значения кодбуков всех 140 матриц блоков.\par
+\textbf{Фиксированы:} индексы, масштабы, смещения и остальные параметры.
+\par\vspace{1mm}
+\textcolor{Accent}{\textbf{Размер хранения сохраняется:}} формы массивов и FP16-точность кодбуков не меняются.
+\par{\small Это fine-tuning по ответам учителя. Уменьшение KD-loss само по себе не гарантирует улучшения FID.}
+\end{frame}
+
+\begin{frame}{Эксперимент и критерии качества}
+\textbf{KD500:} Adam, $10^{-5}$, batch 16, 500 обновлений.\par
+4\,000 ImageNet-латентов для обучения, 1\,000 отложено.\par
+Фиксированная проба из 96 пар для выбора checkpoint.\par
+{\small Во время обучения $t$ выбирается из исходной сетки 1\,000 времён.}
+\par\vspace{1mm}
+\textbf{Оценка:} по 10\,000 изображений на модель.\par
+\textbf{50 шагов DDPM}, CFG 1,5, MSE VAE, FP32 без TF32.\par
+Одинаковые классы и парные шумы для всех моделей.
+\par\vspace{1mm}
+\textbf{Основной критерий:} FID$\downarrow$ при той же битности.\par
+\textbf{Дополнительно:} sFID, IS, precision и recall через ADM.
+\end{frame}
+
+\begin{frame}{FID снижается с \NativeFID{} до \KDFID{}}
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Модель & бит/парам. & FID$\downarrow$ & sFID$\downarrow$\\
+\midrule
+\SlideRows
+\bottomrule
+\end{tabular}
+\par\vspace{3mm}
+\raggedright
+\textcolor{Accent}{\textbf{FID ниже на 49,3\% при прежней битности.}}\par
+До исходной DiT остаётся разрыв 1,72 FID.\par
+Recall снижается: $0{,}7115\to0{,}6770$.
+\par\vspace{1mm}
+\textbf{Вывод:} гипотеза поддерживается в проверенной конфигурации. Один фиксированный запуск не устанавливает устойчивость по seed.
+\end{frame}
+\end{document}
