@@ -1,5 +1,6 @@
 \documentclass[aspectratio=169,12pt]{beamer}
 \input{theme}
+\usepackage{tikz}
 \hypersetup{pdftitle={Векторная квантизация диффузионных трансформеров}}
 \begin{document}
 \begin{frame}[plain]
@@ -9,56 +10,91 @@
 Егор Подъяблонский\par
 {\small МГУ, факультет ВМК\par Научный руководитель: Айбек Аланов}
 \par\vspace{4mm}
-\textbf{Цель}\quad Улучшить генерацию при прежней битности.
+\textbf{Задача}\quad Сквантовать DiT: сократить память весов с небольшой потерей качества генерации.
 \par\vspace{2mm}
-\textcolor{Accent}{\textbf{Гипотеза}}\quad Подгонка кодбуков под выход исходной сети снижает FID после послойной квантизации.
+\textcolor{Accent}{\textbf{Основа}}\quad Представлять группы весов суммой элементов нескольких кодбуков.
 \end{frame}
 
-\begin{frame}{Модель и обоснование}
-\textbf{DiT-XL/2}\quad Диффузионный трансформер для ImageNet256.\par
-\textbf{VQDM}\quad Группы весов заменяются суммами элементов кодбуков:
+\begin{frame}{Как устроен DiT-XL/2}
+DiT предсказывает шум на каждом шаге диффузии.
+\par\vspace{1mm}
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,
+ box/.style={draw=Accent,line width=.7pt,align=center,minimum height=12mm,inner sep=2mm,font=\fontsize{10.5}{13}\selectfont},
+ arr/.style={->,>=latex,line width=.7pt,draw=Accent}]
+ \node[box,text width=20mm] (input) at (1.2,0) {Латент $z_t$\\с шумом};
+ \node[box,text width=23mm] (patch) at (4.0,0) {Патчи $2\!\times\!2$\\256 токенов};
+ \node[box,text width=31mm] (blocks) at (8.0,0) {28 блоков\\Attention + MLP};
+ \node[box,text width=18mm] (out) at (12.1,0) {Выход\\$\epsilon,\ v$};
+ \draw[arr] (input.east)--(patch.west);
+ \draw[arr] (patch.east)--(blocks.west);
+ \draw[arr] (blocks.east)--(out.west);
+ \node[align=center,font=\fontsize{10.5}{13}\selectfont] (cond) at (8.0,1.65) {Время $t$ + класс $y$};
+ \draw[arr] (cond.south)--node[right,font=\fontsize{9}{11}\selectfont]{adaLN}(blocks.north);
+\end{tikzpicture}
+\par\vspace{2mm}
+\raggedright
+\textbf{Квантуем:} 140 матриц внутри блоков.\par
+\textbf{Оцениваем:} FID$\downarrow$ при заданной битности.\par
+{\small ImageNet256; $\epsilon$ --- шум, $v$ --- сырой выход головы дисперсии.\par
+Peebles, Xie. Scalable Diffusion Models with Transformers, 2023.}
+\end{frame}
+
+\begin{frame}{Несколько кодбуков для одной группы весов}
+Кодбук --- небольшая таблица векторов.\par
+\textbf{Идея:} сумма нескольких кодовых векторов даёт более гибкое приближение весов, чем один вектор.
 \[
- \widehat w=s\sum_{m=1}^{4}C_m[a_m],\qquad K=256,\quad d=8.
+ \underbrace{\widehat w=sC[a]}_{\text{один кодбук}}
+ \qquad\longrightarrow\qquad
+ \underbrace{\widehat w=s\sum_{m=1}^{4}C_m[a_m]}_{\text{четыре кодбука}}.
 \]
-Индексы: номинально 4 бита на квантованный вес.\par
-Вся DiT с кодбуками и остальными параметрами: \textbf{\WholeBpp{} бита/параметр}.
+В каждом кодбуке 256 векторов длины 8.\par
+Четыре 8-битных индекса на 8 весов: \textbf{4 бита/вес}.\par
+С кодбуками и остальными весами: \textbf{\WholeBpp{} бита/параметр}.
 \par\vspace{1mm}
-\textbf{Критерий:} FID$\downarrow$ при неизменной битности.
-\par\vspace{1mm}
-{\small DiT: Peebles, Xie, 2023. VQDM: Egiazarian et al., 2024.\par
-VQDM: реконструкция ответа U-Net. Здесь калибруются кодбуки DiT.}
+{\small Основа --- аддитивная квантизация VQDM (Egiazarian et al., 2024).}
 \end{frame}
 
-\begin{frame}{Калибровка кодбуков по выходу сети}
-Одинаковые зашумлённый латент $z_t$, время $t$ и класс $y$ подаются исходной и квантованной DiT.
+\begin{frame}{Первая гипотеза: кодбуки для разных времён}
+На разных шагах меняются входы и чувствительность DiT.\par
+\textbf{Идея:} выделить свой набор кодбуков каждому из 5 окон.
+\par\vspace{2mm}
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Наборы кодбуков & Обновления & бит/парам. & FID$\downarrow$\\
+\midrule
+\TemporalRows
+\bottomrule
+\end{tabular}
+\par\vspace{2mm}
+\raggedright
+\textcolor{Accent}{\textbf{Временная специализация не дала выигрыша в FID.}}\par
+Локальная ошибка уменьшилась, память выросла.\par
+{\small Историческое парное сравнение: 10k, DDPM50, CFG 1,5.\par
+Вывод относится к этому способу учёта времени.}
+\end{frame}
+
+\begin{frame}{Вторая гипотеза: изменить loss калибровки}
+\textbf{Послойно:} приближать выход каждой матрицы,\quad
+$\|XW-X\widehat W\|^2$.\par
+\textbf{Глобально:} приближать выход всей исходной DiT:
 \[
  \mathcal L_{\mathrm{rec}}=
- \underbrace{\operatorname{MSE}(\epsilon_Q,\epsilon_T)}_{\text{предсказание шума}}
- +0{,}1\underbrace{\operatorname{MSE}(v_Q,v_T)}_{\text{сырой variance-выход}}.
+ \operatorname{MSE}(\epsilon_Q,\epsilon_T)
+ +0{,}1\operatorname{MSE}(v_Q,v_T).
 \]
-\textbf{Обучаются:} значения кодбуков всех 140 матриц блоков.\par
-\textbf{Фиксированы:} индексы, масштабы, смещения и остальные параметры.
-\par\vspace{1mm}
-\textcolor{Accent}{\textbf{Размер хранения сохраняется:}} формы массивов и FP16-точность кодбуков не меняются.
-\par{\small Глобальная калибровка квантованной модели. Меньший loss реконструкции сам по себе не гарантирует улучшения FID.}
+{\small $Q$ --- квантованная модель, $T$ --- исходная; входы совпадают.}
+\par
+Обновляем только значения кодбуков; индексы и масштабы фиксированы. \textbf{Битность сохраняется.}\par
+{\small 500 шагов Adam, $10^{-5}$, batch 16; 4\,000 латентов для обучения,\par
+1\,000 отложено. Общие кодбуки для всех времён.}
 \end{frame}
 
-\begin{frame}{Эксперимент и критерии качества}
-\textbf{Калибровка:} Adam, $10^{-5}$, batch 16, 500 обновлений.\par
-4\,000 ImageNet-латентов для обучения, 1\,000 отложено.\par
-Фиксированная проба из 96 пар для выбора checkpoint.\par
-{\small Во время обучения $t$ выбирается из исходной сетки 1\,000 времён.}
-\par\vspace{1mm}
-\textbf{Оценка:} по 10\,000 изображений на модель.\par
-\textbf{50 шагов DDPM}, CFG 1,5, MSE VAE, FP32 без TF32.\par
-Одинаковые классы и парные шумы для всех моделей.
-\par\vspace{1mm}
-\textbf{Метрики:} FID, sFID, IS, precision и recall через ADM.
-\end{frame}
-
-\begin{frame}{FID снижается с \NativeFID{} до \KDFID{}}
+\begin{frame}{Калибровка по выходу сети улучшила FID}
 \centering
 {\small ImageNet256, 10\,000 изображений, DDPM50, CFG 1,5}\par
+{\small Одинаковые классы, парные шумы, MSE VAE; метрики ADM}\par
 \vspace{1mm}
 \begin{tabular}{lrrr}
 \toprule
@@ -67,12 +103,12 @@ VQDM: реконструкция ответа U-Net. Здесь калибрую
 \SlideRows
 \bottomrule
 \end{tabular}
-\par\vspace{3mm}
+\par\vspace{2mm}
 \raggedright
 \textcolor{Accent}{\textbf{FID ниже на 49,3\% при прежней битности.}}\par
-До исходной DiT остаётся разрыв 1,72 FID.\par
-Recall снижается: $0{,}7115\to0{,}6770$.
+\textbf{Итог:} временные кодбуки не помогли; глобальный loss помог.\par
+{\small Разрыв с FP: 1,72 FID. Recall: $0{,}7115\to0{,}6770$.}
 \par\vspace{1mm}
-\textbf{Вывод:} гипотеза поддерживается в проверенной конфигурации. Один фиксированный запуск не устанавливает устойчивость по seed.
+{\small Один запуск. Таблица временных кодбуков --- другая выборка.}
 \end{frame}
 \end{document}

@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "comparison": "One shared set of additive codebooks versus five time-specific sets",
+  "source_repository": "YaguarEgor/diffusion_models_vector_quantization",
+  "source_commit": "9d553985ae90bce6f90f0972e26e7f065e889385",
+  "source_metrics_path": "diploma/run_summaries/dit_objective_20261103/temporal_quality.csv",
+  "source_metrics_git_blob_sha1": "acb58c61cd8068ffa5feaafdf30d8a1d450fa7a2",
+  "source_setup_path": "docs/EXPERIMENTS.md#6-временные-кодбуки",
+  "protocol": {
+    "n_samples": 10000,
+    "sampler": "DDPM",
+    "steps": 50,
+    "cfg_scale": 1.5,
+    "comparison_type": "paired historical cohort; independent of data/results.json generation cohort",
+    "total_refit_updates": 1000,
+    "time_windows": 5,
+    "shared_between_windows": "assignments and scales",
+    "codebooks_per_additive_set": 4
+  },
+  "results": [
+    {
+      "method": "uniform1000",
+      "codebook_sets": 1,
+      "updates_per_set": 1000,
+      "whole_dit_bpp": 4.150078,
+      "fid": 15.644184914222365,
+      "sfid": 27.86290777648685,
+      "inception_score": 145.92022705078125
+    },
+    {
+      "method": "temporal5",
+      "codebook_sets": 5,
+      "updates_per_set": 200,
+      "whole_dit_bpp": 4.258798,
+      "fid": 15.694655583945348,
+      "sfid": 27.83568241772457,
+      "inception_score": 145.43563842773438
+    }
+  ],
+  "conclusion_scope": "No observed FID improvement from this temporal codebook specialization at matched total update count; does not establish that timesteps are unimportant.",
+  "cross_cohort_warning": "Do not compute an improvement from these FIDs to the output-calibration FIDs in data/results.json."
+}
