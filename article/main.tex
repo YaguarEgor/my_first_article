@@ -4,7 +4,7 @@
 \usepackage[T1]{fontenc}
 \usepackage{amsmath,amssymb,booktabs,graphicx,microtype,url,hyperref,tikz}
 \hypersetup{hidelinks,pdftitle={Vector Quantization of Diffusion Transformers},pdfauthor={Egor Podyablonskiy}}
-\input{../data/numbers}
+\input{results}
 \title{Vector Quantization of Diffusion Transformers}
 \author{Egor Podyablonskiy\\Faculty of Computational Mathematics and Cybernetics\\Lomonosov Moscow State University\\Scientific advisor: Aibek Alanov}
 \date{November 12, 2026}
@@ -131,7 +131,7 @@ FP32 codebook master values are optimized through FP16 casts, with reconstructed
 
 \section{Experiment}
 \paragraph{Objectives and temporal comparison.}
-The first experiment compares five window-specific sets with a shared set at the same 1,000-update total. Each variant generates 10,000 images with DDPM50 and CFG 1.5, using the same historical generation cohort within this comparison. The source measurements and setup are retained in the pinned \href{https://github.com/YaguarEgor/diffusion_models_vector_quantization/blob/9d553985ae90bce6f90f0972e26e7f065e889385/docs/EXPERIMENTS.md}{research snapshot}; the curated numeric source is \texttt{data/temporal\_results.json}.
+The first experiment compares five window-specific sets with a shared set at the same 1,000-update total. Each variant generates 10,000 images with DDPM50 and CFG 1.5, using the same historical generation cohort within this comparison. The source measurements and setup are retained in the pinned \href{https://github.com/YaguarEgor/diffusion_models_vector_quantization/blob/9d553985ae90bce6f90f0972e26e7f065e889385/docs/EXPERIMENTS.md}{research snapshot}. Table~\ref{tab:temporal} reproduces those measurements.
 
 \paragraph{Data for output calibration.}
 The second experiment tests the addition of 500 full-network calibration updates, checks fixed storage and measures auxiliary quality. Initial layerwise calibration used 256 teacher-generated DDPM trajectories. Global calibration uses 5,000 fixed ImageNet training images from two fixed shards, encoded with the MSE VAE: 4,000 latents for updates and 1,000 reserved. A fixed probe uses 96 input/noise pairs at six times from the reserved subset; its MSE is not an average over all 1,000 reserved images. Saved probes at updates 0, 50, 100, 200 and 500 are monitored before FID evaluation. The final500 point also has the lowest saved probe error.
@@ -202,7 +202,7 @@ Neither comparison estimates variation across independently trained quantizers. 
 The work starts from a storage problem: approximate DiT weights compactly using several additive codebooks while retaining generation quality. The tested temporal specialization does not improve FID over shared codebooks, despite using more memory. The subsequent change to full-network output calibration improves FID from \NativeFID{} to \KDFID{} at unchanged logical storage. A gap to the original model and reduced recall remain. Independent repeats and compute-matched objective comparisons are needed to determine how broadly the result holds.
 
 \paragraph{Artifacts.}
-The \href{https://github.com/YaguarEgor/my_first_article}{practicum repository} contains this manuscript, its matching six-slide presentation and both numeric snapshots. Code and experiment history remain in the \href{https://github.com/YaguarEgor/diffusion_models_vector_quantization}{research repository}.
+The \href{https://github.com/YaguarEgor/my_first_article}{practicum repository} contains this manuscript, the original one-slide talk and the current six-slide presentation. Code and experiment history remain in the \href{https://github.com/YaguarEgor/diffusion_models_vector_quantization}{research repository}.
 \renewcommand{\bibfont}{\small}
 \setlength{\bibsep}{2pt}
 \clearpage
