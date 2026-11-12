@@ -1,10 +1,10 @@
 \documentclass[aspectratio=169,12pt]{beamer}
 \input{theme}
-\hypersetup{pdftitle={Дистилляция кодбуков квантованной DiT}}
+\hypersetup{pdftitle={Векторная квантизация диффузионных трансформеров}}
 \begin{document}
 \begin{frame}[plain]
 \par\vspace{2mm}
-{\fontsize{22}{26}\selectfont\bfseries Дистилляция кодбуков\\квантованной DiT\par}
+{\fontsize{22}{26}\selectfont\bfseries Векторная квантизация\\диффузионных трансформеров\par}
 \par\vspace{4mm}
 Егор Подъяблонский\par
 {\small МГУ, факультет ВМК\par Научный руководитель: Айбек Аланов}
@@ -26,13 +26,13 @@
 \textbf{Критерий:} FID$\downarrow$ при неизменной битности.
 \par\vspace{1mm}
 {\small DiT: Peebles, Xie, 2023. VQDM: Egiazarian et al., 2024.\par
-VQDM уже использует KD для U-Net. Здесь обучаются кодбуки DiT.}
+VQDM: реконструкция ответа U-Net. Здесь калибруются кодбуки DiT.}
 \end{frame}
 
-\begin{frame}{Подгонка под выход всей сети}
+\begin{frame}{Калибровка кодбуков по выходу сети}
 Одинаковые зашумлённый латент $z_t$, время $t$ и класс $y$ подаются исходной и квантованной DiT.
 \[
- \mathcal L_{\mathrm{KD}}=
+ \mathcal L_{\mathrm{rec}}=
  \underbrace{\operatorname{MSE}(\epsilon_Q,\epsilon_T)}_{\text{предсказание шума}}
  +0{,}1\underbrace{\operatorname{MSE}(v_Q,v_T)}_{\text{сырой variance-выход}}.
 \]
@@ -40,11 +40,11 @@ VQDM уже использует KD для U-Net. Здесь обучаются 
 \textbf{Фиксированы:} индексы, масштабы, смещения и остальные параметры.
 \par\vspace{1mm}
 \textcolor{Accent}{\textbf{Размер хранения сохраняется:}} формы массивов и FP16-точность кодбуков не меняются.
-\par{\small Это fine-tuning по ответам учителя. Уменьшение KD-loss само по себе не гарантирует улучшения FID.}
+\par{\small Глобальная калибровка квантованной модели. Меньший loss реконструкции сам по себе не гарантирует улучшения FID.}
 \end{frame}
 
 \begin{frame}{Эксперимент и критерии качества}
-\textbf{KD500:} Adam, $10^{-5}$, batch 16, 500 обновлений.\par
+\textbf{Калибровка:} Adam, $10^{-5}$, batch 16, 500 обновлений.\par
 4\,000 ImageNet-латентов для обучения, 1\,000 отложено.\par
 Фиксированная проба из 96 пар для выбора checkpoint.\par
 {\small Во время обучения $t$ выбирается из исходной сетки 1\,000 времён.}

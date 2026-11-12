@@ -2,11 +2,11 @@
 \input{theme}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
-\hypersetup{pdftitle={KD кодбуков VQDM: одна гипотеза и результат}}
+\hypersetup{pdftitle={Векторная квантизация DiT: калибровка по выходу сети}}
 \begin{document}
 \begin{frame}[plain]
 \par\vspace{0pt}
-{\fontsize{18}{21}\selectfont\bfseries Дистилляция кодбуков VQDM для DiT\par}
+{\fontsize{18}{21}\selectfont\bfseries Векторная квантизация DiT\par}
 \par\vspace{2mm}
 \textbf{Гипотеза:} подгонка под выход исходной сети снижает FID при прежней битности.
 \par\vspace{1mm}
@@ -17,7 +17,7 @@
 \begin{axis}[
  width=73mm,height=45mm,ybar,bar width=9mm,
  ymin=0,ymax=18,xmin=-.6,xmax=2.6,
- xtick={0,1,2},xticklabels={FP,VQDM,VQDM+KD},
+ xtick={0,1,2},xticklabels={FP,VQDM,Реконстр.},
  ytick={0,5,10,15},ylabel={FID$\downarrow$},
  axis lines*=left,ymajorgrids,grid style={black!12},
  tick label style={font=\fontsize{10}{12}\selectfont},
