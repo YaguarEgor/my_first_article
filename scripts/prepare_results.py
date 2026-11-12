@@ -34,6 +34,21 @@ for x in temporal['results']:
  fields=[label,updates,f"{x['whole_dit_bpp']:.3f}".replace('.',','),f"{x['fid']:.3f}".replace('.',',')]
  temporal_rows.append(' & '.join(fields)+r' \\')
 macros['TemporalRows']='\n'.join(temporal_rows)
+temporal_article=[];temporal_summary=[]
+for x in temporal['results']:
+ label='One shared set' if x['codebook_sets']==1 else 'Five time-specific sets'
+ updates='1\\,000' if x['codebook_sets']==1 else r'$5\times200$'
+ temporal_article.append(' & '.join([label,updates,f"{x['whole_dit_bpp']:.4f}",f"{x['fid']:.3f}"])+r' \\')
+ label='Один общий' if x['codebook_sets']==1 else 'Пять временных'
+ temporal_summary.append(' & '.join([label,f"{x['whole_dit_bpp']:.2f}".replace('.',','),f"{x['fid']:.2f}".replace('.',',')])+r' \\')
+macros['TemporalArticleRows']='\n'.join(temporal_article)
+macros['TemporalSummaryRows']='\n'.join(temporal_summary)
+fid_only=[]
+for i,x in enumerate(rows):
+ fields=[['Исходная DiT','Послойная квантизация','Калибровка по выходу'][i],'32' if i==0 else f"{x['whole_dit_bpp']:.2f}".replace('.',','),f"{x['fid']:.2f}".replace('.',',')]
+ if i==2:fields=['\\textbf{'+f+'}' for f in fields]
+ fid_only.append(' & '.join(fields)+r' \\')
+macros['FIDOnlyRows']='\n'.join(fid_only)
 plot='position fid label\n'+''.join(f"{i} {x['fid']} {x['fid']:.2f}\n".replace(f"{x['fid']:.2f}\n",f"{x['fid']:.2f}".replace('.',',')+'\n') for i,x in enumerate(rows))
 (R/'data/fid_plot.dat').write_text(plot)
 text='% Generated from data/results.json and data/temporal_results.json.\n'
