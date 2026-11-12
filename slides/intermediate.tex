@@ -23,17 +23,18 @@ DiT шаг за шагом удаляет шум из изображения.
  box/.style={draw=Accent,line width=.7pt,align=center,minimum height=12mm,inner sep=2mm,font=\fontsize{11}{14}\selectfont},
  arr/.style={->,>=latex,line width=.7pt,draw=Accent}]
  \node[box,text width=20mm] (input) at (1.2,0) {Латент\\с шумом};
- \node[box,text width=23mm] (patch) at (4.0,0) {Патчи};
+ \node[box,text width=23mm] (patch) at (4.0,0) {Патчи $2\times2$};
  \node[box,text width=31mm] (blocks) at (8.0,0) {28 блоков\\Attention + MLP};
- \node[box,text width=18mm] (out) at (12.1,0) {Выход\\сети};
+ \node[box,text width=18mm] (out) at (12.1,0) {Выход сети\\$\epsilon,\ v$};
  \draw[arr] (input.east)--(patch.west);
  \draw[arr] (patch.east)--(blocks.west);
  \draw[arr] (blocks.east)--(out.west);
- \node[align=center,font=\fontsize{11}{14}\selectfont] (cond) at (8.0,1.5) {Время + класс};
- \draw[arr] (cond.south)--(blocks.north);
+ \node[align=center,font=\fontsize{11}{14}\selectfont] (cond) at (8.0,1.5) {Время $t$ + класс $y$};
+ \draw[arr] (cond.south)--node[right,font=\fontsize{10}{12}\selectfont]{adaLN}(blocks.north);
 \end{tikzpicture}
-\par\vspace{4mm}
+\par\vspace{2mm}
 \raggedright
+$\epsilon$ --- предсказание шума; $v$ --- выход головы дисперсии.\par
 \textbf{Квантуем веса 140 матриц} внутри этих блоков.\par
 В наших экспериментах генерация занимает \textbf{50 шагов}.
 \end{frame}
@@ -83,13 +84,17 @@ DiT шаг за шагом удаляет шум из изображения.
 \end{frame}
 
 \begin{frame}{Вторая гипотеза: выход всей сети}
-\textbf{Послойная калибровка}\par
-Приближаем выход каждого слоя отдельно.
-\par\vspace{3mm}
-\textcolor{Accent}{\textbf{Калибровка по выходу всей сети}}\par
-Приближаем ответ исходной DiT на том же входе.\par
-Совместно настраиваем кодбуки всех слоёв.
-\par\vspace{3mm}
+\textbf{Послойная калибровка}
+\[
+ \mathcal L_{\mathrm{layer}}=\sum_\ell\|X_\ell W_\ell-X_\ell\widehat W_\ell\|_F^2.
+\]
+\textcolor{Accent}{\textbf{Калибровка по выходу всей сети}}
+\[
+ \mathcal L_{\mathrm{rec}}=
+ \operatorname{MSE}(\epsilon_Q,\epsilon_T)
+ +0{,}1\operatorname{MSE}(v_Q,v_T).
+\]
+$Q$ --- квантованная сеть, $T$ --- исходная DiT.\par
 \textbf{500 обновлений кодбуков. Объём хранения не меняется.}
 \end{frame}
 
@@ -107,7 +112,6 @@ DiT шаг за шагом удаляет шум из изображения.
 \end{tabular}
 \par\vspace{3mm}
 \raggedright
-\textcolor{Accent}{\textbf{FID ниже на 49,3\% при прежней битности.}}\par
-В наших опытах временные кодбуки не дали выигрыша, а калибровка по выходу всей сети помогла.
+\textcolor{Accent}{\textbf{FID ниже на 49,3\% при прежней битности.}}
 \end{frame}
 \end{document}
