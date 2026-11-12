@@ -23,8 +23,10 @@
 Индексы: номинально 4 бита на квантованный вес.\par
 Вся DiT с кодбуками и остальными параметрами: \textbf{\WholeBpp{} бита/параметр}.
 \par\vspace{1mm}
+\textbf{Критерий:} FID$\downarrow$ при неизменной битности.
+\par\vspace{1mm}
 {\small DiT: Peebles, Xie, 2023. VQDM: Egiazarian et al., 2024.\par
-VQDM уже использует глобальную дистилляцию для U-Net. Здесь проверяется её перенос на DiT с обучением только кодбуков.}
+VQDM уже использует KD для U-Net. Здесь обучаются кодбуки DiT.}
 \end{frame}
 
 \begin{frame}{Подгонка под выход всей сети}
@@ -51,12 +53,13 @@ VQDM уже использует глобальную дистилляцию д�
 \textbf{50 шагов DDPM}, CFG 1,5, MSE VAE, FP32 без TF32.\par
 Одинаковые классы и парные шумы для всех моделей.
 \par\vspace{1mm}
-\textbf{Основной критерий:} FID$\downarrow$ при той же битности.\par
-\textbf{Дополнительно:} sFID, IS, precision и recall через ADM.
+\textbf{Метрики:} FID, sFID, IS, precision и recall через ADM.
 \end{frame}
 
 \begin{frame}{FID снижается с \NativeFID{} до \KDFID{}}
 \centering
+{\small ImageNet256, 10\,000 изображений, DDPM50, CFG 1,5}\par
+\vspace{1mm}
 \begin{tabular}{lrrr}
 \toprule
 Модель & бит/парам. & FID$\downarrow$ & sFID$\downarrow$\\

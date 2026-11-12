@@ -11,83 +11,153 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-This intermediate study tests one hypothesis: network-output distillation improves a vector-quantized diffusion transformer without increasing its weight-storage budget. Starting from a transferred, layerwise-calibrated VQDM representation of DiT-XL/2, only codebook values are optimized for 500 updates. Assignments, row scales, biases and other model parameters remain fixed. Under a matched ImageNet256 protocol with 50 DDPM steps, guidance 1.5 and 10,000 generated images per model, FID decreases from \NativeFID{} to \KDFID{} at \WholeBpp{} logical bits per DiT parameter. The full-precision reference reaches \FPFID{}. The observation supports this hypothesis in the tested configuration. It does not establish a new distillation algorithm or robustness across independently trained quantizers.
+One hypothesis is tested: codebook-only output distillation improves a vector-quantized diffusion transformer at fixed logical weight storage. Starting from a transferred, layerwise-calibrated VQDM representation of DiT-XL/2, only codebook values are optimized for 500 updates. Assignments, row scales, biases and other model parameters remain fixed. In a matched ImageNet256 evaluation with 50 DDPM steps, guidance 1.5 and 10,000 images per model, FID decreases from \NativeFID{} to \KDFID{} at \WholeBpp{} bits per DiT parameter. The full-precision teacher reaches \FPFID{}. The result supports the hypothesis in this fixed setting, without establishing a new distillation method or robustness across independent runs.
 \end{abstract}
 
-\section{Goal and hypothesis}
-DiT replaces the usual diffusion denoiser backbone with a transformer~\citep{peebles2023dit}. Its parameter count motivates compact weight representations. Layerwise activation-aware quantization can preserve individual linear maps while leaving errors that interact across the network. The practical goal here is to reduce generation-quality loss after transferring vector quantization to DiT.
+\section{Introduction and goal}
+Diffusion transformers provide a useful generation model but require substantial weight storage~\citep{peebles2023dit}. Vector quantization replaces groups of weights with references to small codebooks. Errors left by independent layer calibration may interact through the complete network, motivating an additional optimization stage.
 
-\textbf{Hypothesis.} At fixed additive representation, discrete assignments and storage precision, optimizing codebooks against the full-precision denoiser output reduces generation FID compared with the same quantized initialization without this additional optimization. The operational success criterion is lower FID in a matched 10,000-image evaluation, with unchanged logical storage. Auxiliary quality criteria are reported to reveal trade-offs.
+\paragraph{Goal.}
+Reduce the generation-quality loss of a vector-quantized DiT without increasing its logical weight-storage budget.
 
-\section{Relevant work and scope}
-VQDM combines vector weight quantization with global teacher-output fine-tuning for SDXL and SDXL-Turbo~\citep{egiazarian2024vqdm}. The original work already proposes distillation after quantization. The contribution investigated here is its restricted transfer to DiT, not the invention of output distillation. Our control omits the global fine-tuning stage and is therefore called \emph{transferred VQDM, layerwise only}, rather than a complete reproduction of the original VQDM pipeline.
+\paragraph{Main idea.}
+Use the original denoiser as a frozen teacher and jointly adjust the quantized model's codebooks to match its complete output. Keep the representation, assignments and other weights fixed. This is the single idea examined throughout the article and in the accompanying one-slide summary.
 
-Knowledge distillation transfers model behavior from a teacher to a student~\citep{hinton2015distilling}; the experiment uses regression on denoiser outputs instead of classification probabilities. VQ4DiT calibrates codebooks and candidate assignments through transformer-block outputs~\citep{deng2025vq4dit}. That is useful context, but it is not the baseline reproduced in this experiment. Metrics use the official ADM evaluation toolkit~\citep{dhariwal2021adm}. No numerical comparison against another paper's separately measured FID is made.
+\section{Related work}
+DiT uses a transformer denoiser on latent image patches~\citep{peebles2023dit}. VQDM combines vector weight quantization with global teacher-output fine-tuning for SDXL and SDXL-Turbo~\citep{egiazarian2024vqdm}. Thus global distillation is established prior work. Here its restricted transfer to DiT is tested: only codebooks are updated, while the control contains the transferred layerwise stage without subsequent global fine-tuning. This control is not called a complete reproduction of the original VQDM pipeline.
 
-\section{Model and method}
-The teacher is the public class-conditional DiT-XL/2 checkpoint for ImageNet $256\times256$. The student has the same architecture. Five matrices per block are quantized: attention QKV and output projections, both MLP projections, and adaLN modulation. Across 28 blocks this gives 140 matrices containing 668,860,416 weights. Other parameters and activations are not quantized.
+Knowledge distillation transfers a teacher's behavior to a student~\citep{hinton2015distilling}; the present objective is denoiser-output regression. VQ4DiT instead calibrates codebooks and candidate assignments through transformer-block outputs~\citep{deng2025vq4dit}. It provides relevant context but is not a reproduced baseline in this experiment. Quality measurements use the official ADM toolkit~\citep{dhariwal2021adm}. All conclusions below compare our own matched measurements.
 
-Each length-$d$ weight subvector is reconstructed as
+\section{Problem statement}
+\paragraph{Hypothesis.}
+For the same layerwise-quantized initialization, architecture and storage precision, updating only codebook values against full-network teacher predictions lowers generation FID while preserving logical storage.
+
+\paragraph{Model.}
+The teacher is the public class-conditional DiT-XL/2 checkpoint for ImageNet $256\times256$. The student has the same architecture. Five matrices per block are quantized: attention QKV and output projections, both MLP projections, and adaLN modulation. The 28 blocks contain 140 such matrices and 668,860,416 quantized weights. Activations, biases and parameters outside these matrices are not quantized.
+
+A length-$d$ weight subvector is reconstructed as
 \begin{equation}
- \widehat w_{\ell,r,g}=s_{\ell,r}\sum_{m=1}^{M}C_{\ell,m}[a_{\ell,r,g,m}],\qquad M=4,\ K=256,\ d=8.
+ \widehat w_{\ell,r,g}=s_{\ell,r}\sum_{m=1}^{M}C_{\ell,m}[a_{\ell,r,g,m}],
+ \qquad M=4,\ K=256,\ d=8.
+ \label{eq:vq}
 \end{equation}
-Thus indices use nominally $M\log_2K/d=4$ bits per quantized weight. Accounting for codebooks, scales and unchanged parameters gives $4.150078$ bits per parameter for the whole DiT, excluding the VAE. This is logical packed storage, not the size of a training checkpoint or a speed measurement.
+Here $\ell$ denotes a layer, $r$ an output row, $g$ a subvector, $C$ codebooks, $a$ stored indices and $s$ row scales. Indices require nominally $M\log_2K/d=4$ bits per quantized weight. Including codebooks, scales and unchanged parameters gives $4.150078$ logical bits per whole-DiT parameter, excluding the VAE.
 
-Let the teacher output be $f_\theta(z_t,t,y)=(\epsilon_\theta,v_\theta)$, where $v$ denotes the raw learned-variance head, not the variance itself. For real-image VAE latents $z_0$, sample $t$ uniformly from the original 1,000-step schedule and construct
+Let $f_\theta(z_t,t,y)=(\epsilon_\theta,v_\theta)$ be the teacher and $f_{Q(C)}$ the student. The second head $v$ is the raw learned-variance prediction, not the variance itself. For a real-image VAE latent $z_0$, inputs are sampled using
 \begin{equation}
- z_t=\sqrt{\bar\alpha_t}z_0+\sqrt{1-\bar\alpha_t}\,\epsilon,\qquad \epsilon\sim\mathcal N(0,I).
+ z_t=\sqrt{\bar\alpha_t}z_0+\sqrt{1-\bar\alpha_t}\,\eta,
+ \qquad \eta\sim\mathcal N(0,I),\quad t\sim\operatorname{Uniform}\{0,\ldots,999\}.
+ \label{eq:noising}
 \end{equation}
-Both networks receive the same $(z_t,t,y)$. Codebooks minimize
+Both networks receive the same $(z_t,t,y)$. The train/reserved split is fixed. This KD stage uses real-image latents and is not data-free.
+
+\paragraph{Quality criteria.}
+The primary criterion is lower FID on a matched 10,000-image evaluation, subject to unchanged logical bpp. FID compares means and covariances of generated and reference Inception features. Lower sFID is an auxiliary spatial-feature criterion; higher IS, precision and recall are also reported. Precision and recall describe different aspects of sample fidelity and distribution coverage. A reduction of teacher-output MSE is a separate diagnostic, not a substitute for generation metrics. The experiment tests an exploratory hypothesis in one fixed configuration, not a statistical claim across training seeds.
+
+\section{Solution: properties and algorithm}
+\paragraph{Training objective.}
+Codebooks minimize
 \begin{equation}
  \mathcal L_{\mathrm{KD}}=
  \operatorname{MSE}(\epsilon_{Q(C)},\epsilon_\theta)
  +0.1\operatorname{MSE}(v_{Q(C)},v_\theta).
  \label{eq:kd}
 \end{equation}
-The teacher is frozen. This objective matches its predictions; it does not directly match the sampled noise $\epsilon$. Its variance term is regression on a teacher head, not the DDPM variational-bound term. No classifier-free guidance is applied to the training loss; labels are replaced by the null class with probability 0.1. The 1,000-step training noising schedule is distinct from the 50-step generation schedule.
+Teacher parameters, assignments, row scales, biases and other weights remain fixed. The target is the teacher's prediction, rather than the sampled noise $\eta$. The variance term is regression on the teacher head, not a DDPM variational-bound loss. Classifier-free guidance is not applied in the training objective; labels are replaced by the null class with probability 0.1.
 
-\paragraph{Optimization.}
-Starting from the completed layerwise-calibrated VQDM checkpoint, all codebooks are updated jointly through the network using Adam, learning rate $10^{-5}$, batch size 16 and 500 updates. Master codebook values are optimized continuously; reconstructed weights use FP16 codebook values and scales and are evaluated in FP32. No gradient is unrolled through a full sampling trajectory. The final step-500 checkpoint was fixed before the 10,000-image evaluation and also had the lowest saved held-out teacher-noise error.
+\paragraph{Property 1: unchanged logical storage.}
+For matrices of size $o_\ell\times i_\ell$, a fixed representation has storage
+\begin{equation}
+ B_{\mathrm{bits}}=
+ \sum_\ell \frac{o_\ell i_\ell}{d}\,M\lceil\log_2K\rceil
+ +16\sum_\ell MKd+B_{\mathrm{fixed}}.
+ \label{eq:storage}
+\end{equation}
+The first term stores indices, the second FP16 codebooks, and $B_{\mathrm{fixed}}$ contains unchanged scales and other parameters. None of these array sizes or precisions depends on the updated codebook values. Therefore codebook-only optimization preserves logical bpp. This is a counting argument for the packed representation, not a bound on serialized checkpoints or inference time.
 
-\paragraph{Storage invariant.}
-With fixed codebook shapes, index arrays, row scales, other parameters and export precision, changing only codebook values leaves the number of stored bits unchanged. This follows by counting the same fixed-size arrays before and after optimization. The saved training check reports zero changes among 334,430,208 assignments. This invariant says nothing about a guaranteed reduction of FID: that remains an empirical question.
+\paragraph{Property 2: a prediction-error bound.}
+Write $S=\epsilon_{Q(C)}$, $T=\epsilon_\theta$ and let $D$ be the number of noise-output elements. On the common input distribution, assume finite second moments and define
+\begin{equation}
+ R(S)=\mathbb E\|S-\eta\|^2/D,
+ \qquad D_{\mathrm{KD}}=\mathbb E\|S-T\|^2/D.
+\end{equation}
+The triangle inequality in $L^2$ gives
+\begin{equation}
+ \sqrt{R(S)}\leq\sqrt{D_{\mathrm{KD}}}+\sqrt{R(T)}.
+ \label{eq:bound}
+\end{equation}
+Indeed, $S-\eta=(S-T)+(T-\eta)$. Distillation controls one term in this upper bound; it does not guarantee a reduction of actual noise error or FID. The latter is checked by generation.
+
+\paragraph{Algorithm.}
+\begin{enumerate}
+ \item Load the completed layerwise VQDM student and its full-precision teacher. Freeze all student parameters except codebook master values.
+ \item For each of 500 updates, sample a batch of 16 training latents, a time and Gaussian noise, and construct inputs by Equation~\eqref{eq:noising}. Apply null-class replacement with probability 0.1.
+ \item Evaluate teacher and student on identical inputs. Compute Equation~\eqref{eq:kd}, backpropagate through the entire student, and update codebooks using Adam with learning rate $10^{-5}$.
+ \item Monitor a fixed held-out teacher-noise probe. Export FP16 codebooks at step 500 and check that assignments and frozen parameters are unchanged. The final500 checkpoint is fixed before the 10,000-image FID calculation.
+ \item Generate matched image sets for teacher, layerwise-only student and KD student, then evaluate the same external criteria for all three.
+\end{enumerate}
+FP32 master values are optimized with autograd through FP16 casts; reconstructed weights are used in FP32 computation. The implementation's cast gradients are used, without claiming exact differentiation of a discrete rounding map. Gradients are not unrolled through the complete sampling trajectory.
 
 \section{Experiment}
-\paragraph{Data.}
-Initial VQDM layerwise calibration used 256 teacher-generated DDPM trajectories. The subsequent KD stage uses 5,000 fixed real ImageNet training images selected from two fixed shards, encoded by the MSE VAE: 4,000 latents for updates and 1,000 reserved latents. Checkpoint selection uses a fixed 96-example probe drawn from the reserved subset at six diffusion timesteps. Its MSE must not be described as an average over all 1,000 reserved images. Unlike the initial trajectory calibration, this KD experiment is not data-free.
+\paragraph{Objectives.}
+Test whether the added KD stage lowers generation FID from the same quantized initialization, verify the storage invariant, and examine auxiliary metrics and the remaining gap to the teacher. The full-precision model is a quality reference; the layerwise-only student is the direct control.
 
-\paragraph{Matched evaluation.}
-All three models generate 10,000 images, ten per ImageNet class, using the same sample records and paired initial/per-step noise. The selection seed is 20261103. Generation uses DDPM50, CFG 1.5, \texttt{sd-vae-ft-mse}, FP32 inference, disabled TF32 and mathematical attention. The official ADM Inception graph and ImageNet256 reference are fixed. FID and sFID use the reference's stored full-dataset statistics; precision and recall use its 10,000 reference images. Half of each archive was retained from the same protocol's earlier 5,000-image evaluation, then extended to 10,000. All headline metrics below were recomputed on the complete 10,000-image archives.
+\paragraph{Calibration and training data.}
+Initial layerwise calibration used 256 teacher-generated DDPM trajectories. KD uses 5,000 fixed ImageNet training images selected from two fixed shards and encoded by the MSE VAE: 4,000 latents for updates and 1,000 reserved. A fixed probe of 96 input/noise pairs at six timesteps is drawn from the reserved subset. Its MSE is not an average over all 1,000 reserved images. The saved teacher-noise probe is monitored at updates 0, 50, 100, 200 and 500. Final500 also has the lowest saved probe error, without selection by FID.
 
-\begin{table}[t]
+\paragraph{Evaluation protocol.}
+Each model generates 10,000 images, ten per ImageNet class, using common sample records and paired initial/per-step noise, with selection seed 20261103. Generation uses \textbf{DDPM50}, CFG 1.5, \texttt{sd-vae-ft-mse}, FP32 computation, disabled TF32 and mathematical attention. The 1,000-step training noising schedule is distinct from these 50 generation steps.
+
+The official ADM Inception graph and ImageNet256 reference are fixed. FID/sFID use stored full-dataset reference statistics; precision/recall use its 10,000 reference images. Each archive extends an earlier same-protocol 5,000-image prefix. All reported metrics are recomputed on the full 10,000-image sets. No result on 5,000 images is compared with a 10,000-image control.
+
+\clearpage
+\section{Results and error analysis}
+\begin{table}[ht]
 \centering
-\caption{Matched completed measurements. Lower FID/sFID and higher IS/precision/recall are preferred. bpp counts logical whole-DiT storage, excluding the VAE.}
-\label{tab:results}
+\caption{Model--data--criteria summary. IN256/10k denotes ImageNet $256\times256$, 10,000 generated images per model. All rows use DDPM50, CFG 1.5 and the same MSE VAE. Logical bpp excludes the VAE.}
+\label{tab:primary}
 \small
-\begin{tabular}{lrrrrrr}
+\begin{tabular}{llrrr}
 \toprule
-Model & bpp & FID$\downarrow$ & sFID$\downarrow$ & IS$\uparrow$ & Prec.$\uparrow$ & Rec.$\uparrow$\\
+Model & Evaluation data & bpp & FID$\downarrow$ & sFID$\downarrow$\\
 \midrule
-\ArticleRows
+\PrimaryRows
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Results and error analysis.}
-FID decreases by \FIDGain\% relative to the layerwise-only initialization. sFID, IS and precision also improve. Recall decreases from 0.7115 to 0.6770, so the result is not an improvement on every metric. The KD student's FID remains \FPGap{} above its own full-precision reference. The saved held-out teacher-noise MSE decreases from 0.001162851 to 0.001007803, or 13.33\%. That same-input prediction criterion is separate from the final generation metrics and is not substituted for them.
+\begin{table}[ht]
+\centering
+\caption{Auxiliary quality criteria on the same ImageNet256/10k sets as Table~\ref{tab:primary}. Higher values are preferred.}
+\label{tab:auxiliary}
+\small
+\begin{tabular}{lrrr}
+\toprule
+Model & IS$\uparrow$ & Precision$\uparrow$ & Recall$\uparrow$\\
+\midrule
+\AuxiliaryRows
+\bottomrule
+\end{tabular}
+\end{table}
 
-\paragraph{Limitations.}
-This is one fixed quantized initialization and one optimization setting. No confidence interval across independent quantizer/training seeds is claimed. The reused evaluation cohort is exploratory, and its class balance differs from natural ImageNet frequencies. The two-shard calibration sample is limited. There is no compute-matched alternative fine-tuning control, so the comparison establishes the benefit of adding this KD stage rather than its superiority to every other use of 500 updates. The results do not imply gains at lower bit widths, different samplers or different VAEs.
+\paragraph{Effect and remaining error.}
+FID decreases from \NativeFID{} to \KDFID{}, a relative reduction of \FIDGain\%, while logical storage remains \WholeBpp{} bpp. The saved check reports zero changes among 334,430,208 assignments. sFID, IS and precision improve, but recall falls from 0.7115 to 0.6770. The result therefore includes a coverage trade-off. The KD student's FID remains \FPGap{} above its own teacher.
 
-An independent replay using a freshly fetched official ADM CLI reproduces checked FIDs within $10^{-5}$, including a published fixed ADM fixture. Some recall values differ at the fourth decimal place, so this is a targeted FID validation, not a claim of bitwise identity for every metric or reproduction of VQ4DiT/DPQ paper numbers.
+The held-out teacher-noise MSE decreases from 0.001162851 to 0.001007803, or 13.33\%. This same-input prediction error and the generation FID quantify different effects. Their improvements are reported separately.
+
+\paragraph{Measurement and uncertainty.}
+Independent replay with a freshly fetched official ADM CLI reproduces checked FIDs within $10^{-5}$, including a published fixed ADM fixture. Some recall values differ at the fourth decimal place. This validates the checked FID calculation, not bitwise identity of every metric or reproduction of another paper's compression results.
+
+Only one fixed quantizer initialization and optimization setting is considered. No confidence interval across independently trained models is estimated, and a single generated cohort is reused exploratorily. Training data comes from two fixed shards; class-balanced evaluation differs from natural ImageNet frequencies. There is no compute-matched alternative fine-tuning control, so the result demonstrates the benefit of adding this KD stage without establishing its superiority to every other use of 500 updates.
 
 \section{Conclusion}
-The tested hypothesis is supported for the reported matched configuration: codebook-only network-output distillation substantially lowers FID at unchanged logical storage. Output distillation itself is established prior work; this experiment demonstrates a useful adaptation to DiT. Independent training seeds and a compute-matched objective comparison are needed before claiming a robust general advantage.
+The hypothesis is supported in the tested configuration: codebook-only output distillation lowers FID from \NativeFID{} to \KDFID{} at unchanged logical storage. A residual gap to FP and a recall decrease remain. Distillation itself is established prior work; the completed experiment checks its restricted transfer to DiT. Independent repeats and a compute-matched objective comparison are needed before a broader conclusion.
 
 \paragraph{Artifacts.}
-The complete numeric snapshot, hashes, table-generation script, talk and archived earlier draft are available at \url{https://github.com/YaguarEgor/my_first_article}. Scientific code and experiment history remain in \url{https://github.com/YaguarEgor/diffusion_models_vector_quantization}. This manuscript is an intermediate practicum draft, not a submitted or peer-reviewed publication.
+The manuscript, one-slide summary, three-minute talk and numeric snapshot are available in the \href{https://github.com/YaguarEgor/my_first_article}{practicum repository}. Scientific code and experiment history remain in the \href{https://github.com/YaguarEgor/diffusion_models_vector_quantization}{research repository}. This is an intermediate practicum manuscript.
 \renewcommand{\bibfont}{\small}
 \setlength{\bibsep}{2pt}
+\clearpage
 \bibliographystyle{plainnat}
 \bibliography{references}
 \end{document}
